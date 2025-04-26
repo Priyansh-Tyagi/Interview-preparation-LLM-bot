@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import random
 from llm_handler import get_llm_response, evaluate_answer
-from question_banks import get_questions
+from question_banks import questions
 from utils import generate_report, save_session
 
 # Global variables to track session state
@@ -26,7 +26,7 @@ def start_interview(role, domain, interview_type, num_questions=3):
     scores = []
     
     # Get questions based on role, domain and interview type
-    questions = get_questions(role, domain, interview_type, num_questions)
+    questions = questions(role, domain, interview_type, num_questions)
     
     # Initialize session data
     session_data = {
@@ -122,128 +122,144 @@ def view_report():
     report = generate_report(interview_history[0], user_answers, feedback_history, scores)
     return report
 
-def create_ui():
-    """Create the Gradio interface"""
-    with gr.Blocks(theme=gr.themes.Soft(), css="""
-        .container {max-width: 800px; margin: auto;}
-        .header {text-align: center; margin-bottom: 20px;}
-        .feedback-box {background-color: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 10px;}
-        .score-box {font-weight: bold; margin-top: 10px;}
-    """) as app:
-        gr.Markdown("# Interview Preparation Bot")
-        gr.Markdown("Practice your interview skills with AI feedback")
-        
-        with gr.Tab("Setup Interview"):
-            with gr.Row():
-                with gr.Column():
-                    role = gr.Dropdown(
-                        choices=["Software Engineer", "Data Scientist", "Product Manager", "UX Designer", "DevOps Engineer"],
-                        label="Select Job Role",
-                        value="Software Engineer"
-                    )
-                    domain = gr.Dropdown(
-                        choices=["frontend", "backend", "full-stack", "machine learning", "system design", "general"],
-                        label="Select Domain (Optional)",
-                        value="general"
-                    )
-                    
-                with gr.Column():
-                    interview_type = gr.Radio(
-                        choices=["technical", "behavioral"],
-                        label="Interview Type",
-                        value="technical"
-                    )
-                    num_questions = gr.Slider(
-                        minimum=1,
-                        maximum=5,
-                        value=3,
-                        step=1,
-                        label="Number of Questions"
-                    )
-                    
-            start_btn = gr.Button("Start Interview", variant="primary")
-        
-        with gr.Tab("Interview Session"):
-            with gr.Row():
-                with gr.Column():
-                    question_box = gr.Textbox(label="Question", lines=3, interactive=False)
-                    answer_box = gr.Textbox(label="Your Answer", lines=5, placeholder="Type your answer here...")
-                    
-                    with gr.Row():
-                        submit_btn = gr.Button("Submit Answer", variant="primary", visible=False)
-                        retry_btn = gr.Button("Retry Question", visible=False)
-                        skip_btn = gr.Button("Skip Question", visible=False)
-                    
-                with gr.Column():
-                    feedback_box = gr.Textbox(label="Feedback", lines=5, interactive=False)
-                    score_box = gr.Textbox(label="Score", interactive=False)
-            
-            report_btn = gr.Button("View Final Report", visible=False)
-            report_output = gr.Textbox(label="Interview Report", lines=10, interactive=False)
-        
-        # Event handlers
-        start_btn.click(
-            start_interview,
-            inputs=[role, domain, interview_type, num_questions],
-            outputs=[question_box, feedback_box, score_box, submit_btn, retry_btn, skip_btn]
-        )
-        
-        submit_btn.click(
-            submit_answer,
-            inputs=[role, domain, interview_type, question_box, answer_box],
-            outputs=[question_box, feedback_box, score_box, submit_btn, retry_btn, report_btn]
-        )
-        
-        retry_btn.click(
-            retry_question,
-            inputs=[],
-            outputs=[question_box, feedback_box, score_box, submit_btn, retry_btn, report_btn]
-        )
-        
-        skip_btn.click(
-            skip_question,
-            inputs=[role, domain, interview_type],
-            outputs=[question_box, feedback_box, score_box, submit_btn, skip_btn, report_btn]
-        )
-        
-        report_btn.click(
-            view_report,
-            inputs=[],
-            outputs=[report_output]
-        )
-        
-    return app
-
-# app.py
+import gradio as gr
+import time
 
 import gradio as gr
-from llm_handler import evaluate_answer
+import time
+
+import gradio as gr
+import time
 
 def create_ui():
-    with gr.Blocks() as demo:
-        gr.Markdown("# 🧠 Interview Preparation Bot")
+    with gr.Blocks(theme=gr.themes.Soft()) as demo:  # Lighter and modern color palette
+        gr.Markdown("# 🎯 Interview Preparation Bot")
+        gr.Markdown("Practice job interview questions with instant AI feedback!")
 
-        role = gr.Textbox(placeholder="Enter your Role (e.g., Software Engineer)", label="Role")
-        domain = gr.Textbox(placeholder="Enter the Domain (e.g., Machine Learning)", label="Domain")
-        interview_type = gr.Dropdown(["Technical", "Behavioral", "HR"], label="Interview Type")
-        question = gr.Textbox(placeholder="Enter the interview question", label="Question")
-        answer = gr.Textbox(placeholder="Enter your answer", label="Your Answer")
+        # Define the row for the input fields
+        with gr.Row():
+            role = gr.Textbox(label="Role (e.g., Software Engineer)", placeholder="e.g., Software Engineer")
+            domain = gr.Dropdown(
+                choices=["Web Development", "Machine Learning", "System Design", "Data Science"],
+                label="Domain",
+                value="Web Development",
+                interactive=True
+            )
 
-        feedback_output = gr.Textbox(label="Feedback")
-        score_output = gr.Textbox(label="Score")
+        # Dropdowns for interview type and difficulty
+        with gr.Row():
+            interview_type = gr.Dropdown(
+                choices=["Behavioral", "Technical"], label="Interview Type", value="Technical"
+            )
+            difficulty = gr.Dropdown(
+                choices=["Easy", "Medium", "Hard"], label="Difficulty", value="Medium"
+            )
 
-        def process(role, domain, interview_type, question, answer):
-            return evaluate_answer(role, domain, interview_type, question, answer)
+        start_button = gr.Button("Start Interview 🚀", variant="primary")
 
-        submit_button = gr.Button("Submit Answer")
+        # Display area for questions, feedback, score, etc.
+        question_display = gr.Markdown("")  # Question Display
+        answer_box = gr.Textbox(label="Your Answer", placeholder="Type your answer here...")
+        submit_button = gr.Button("Submit Answer ✅")
+
+        # Feedback, score, and progress display
+        feedback_display = gr.Markdown("")  # For feedback (to be shown later)
+        score_display = gr.Markdown("")  # For score (to be shown later)
+        timer_display = gr.Markdown("")  # Timer display
+        progress_display = gr.Markdown("")  # Progress display (e.g., Question 1 of 5)
+
+        motivational_message = gr.Markdown("")  # Motivational message at the end
+
+        # State variable to track progress
+        state = gr.State({
+            "current_question": "",
+            "current_question_number": 0,
+            "total_questions": 5,
+            "start_time": None,
+            "answered_questions": 0,  # Number of answered questions
+            "correct_answers": 0
+        })
+
+        # Functions
+        def start_interview(role, domain, interview_type, difficulty):
+            first_question = generate_question(role, domain, interview_type, difficulty)
+            return {
+                question_display: f"### Question 1: {first_question}",
+                progress_display: f"Progress: 1/5 📈",
+                state: {
+                    "current_question": first_question,
+                    "current_question_number": 1,
+                    "total_questions": 5,
+                    "start_time": time.time(),
+                    "answered_questions": 0,
+                    "correct_answers": 0
+                },
+                motivational_message: ""
+            }
+
+        def submit_answer(answer, role, domain, interview_type, difficulty, data):
+            if not answer:
+                answer = "SKIPPED"
+            
+            feedback, score = evaluate_answer(role, domain, interview_type, data['current_question'], answer)
+            time_taken = int(time.time() - data['start_time'])
+
+            # Update state after answering
+            data["answered_questions"] += 1
+
+            # Prepare next question (if there are more)
+            if data["answered_questions"] < data["total_questions"]:
+                next_question = generate_question(role, domain, interview_type, difficulty)
+                next_question_number = data["answered_questions"] + 1
+                progress = f"Progress: {next_question_number}/5 📈"
+                question_text = f"### Question {next_question_number}: {next_question}"
+                motivational = ""
+            else:
+                next_question = ""
+                question_text = "🎉 Interview Completed!"
+                progress = "✅ All Questions Answered!"
+                motivational = "Good Job! 🚀 Stay awesome!"
+
+            # Update state
+            data.update({
+                "current_question": next_question,
+                "current_question_number": data["answered_questions"] + 1,
+                "start_time": time.time()
+            })
+
+            # Display feedback only after all questions are answered
+            if data["answered_questions"] == data["total_questions"]:
+                return {
+                    feedback_display: f"### Feedback:\n{feedback}",
+                    score_display: f"### Score: {score}/10",
+                    timer_display: f"⏱ Time Taken: {time_taken} seconds",
+                    question_display: question_text,
+                    progress_display: progress,
+                    motivational_message: motivational,
+                    state: data
+                }
+
+            return {
+                question_display: question_text,
+                progress_display: progress,
+                timer_display: f"⏱ Time Taken: {time_taken} seconds",
+                state: data
+            }
+
+        # Event Bindings
+        start_button.click(
+            start_interview,
+            inputs=[role, domain, interview_type, difficulty],
+            outputs=[question_display, progress_display, state, motivational_message]
+        )
+
         submit_button.click(
-            fn=process,
-            inputs=[role, domain, interview_type, question, answer],
-            outputs=[feedback_output, score_output]
+            submit_answer,
+            inputs=[answer_box, role, domain, interview_type, difficulty, state],
+            outputs=[feedback_display, score_display, timer_display, question_display, progress_display, motivational_message, state]
         )
 
     return demo
-
 
 if __name__ == "__main__":
     ui = create_ui()

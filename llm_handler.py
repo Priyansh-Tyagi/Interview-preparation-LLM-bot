@@ -3,6 +3,26 @@ import os
 import openai
 import json
 
+#load local question_bank for demo
+from question_banks import questions
+import random
+
+def generate_question(role, domain, interview_type, difficulty, topic):
+    """
+    Pick a random question based on topic and difficulty.
+    If unavailable, fallback to LLM.
+    """
+    topic_data = questions.get(topic, {})
+    difficulty_questions = topic_data.get(difficulty, [])
+    
+    if difficulty_questions:
+        return random.choice(difficulty_questions)
+    else:
+        # Fallback if specific difficulty is missing
+        prompt = f"Generate a {difficulty} level {topic} interview question for a {role} in a {domain} {interview_type} interview."
+        return get_llm_response(prompt)
+
+
 #load env
 from dotenv import load_dotenv
 load_dotenv()
