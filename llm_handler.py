@@ -1,23 +1,21 @@
-if __name__ == "__main__":
-    ui = create_ui()
-    ui.launch()
-
 # llm_handler.py
 import os
 import openai
 import json
 
+#load env
+from dotenv import load_dotenv
+load_dotenv()
+
 # Set up your API key (in production, use environment variables)
-openai.api_key = os.getenv("OPENAI_API_KEY")
+from openai import OpenAI
+
+# Set up OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def get_llm_response(prompt, max_tokens=500):
-    """
-    Get response from LLM API
-    You can replace this with your preferred LLM API
-    """
-    # If using OpenAI
     try:
-         response = openai.ChatCompletion.create(
+         response = client.chat.completions.create(
              model="gpt-3.5-turbo",
              messages=[
                  {"role": "system", "content": "You are an expert interviewer helping candidates prepare for job interviews."},
@@ -26,12 +24,12 @@ def get_llm_response(prompt, max_tokens=500):
              max_tokens=max_tokens
          )
          return response.choices[0].message.content
-        
-         For demo purposes - replace with actual API call
-        return "This is a simulated LLM response. In a real implementation, this would use an LLM API like OpenAI, Claude, or another model."
-    
     except Exception as e:
         return f"Error getting LLM response: {str(e)}"
+
+    
+    # For demo purposes - in case you simulate the response without API (unreachable here now)
+    # return "This is a simulated LLM response. In a real implementation, this would use an LLM API like OpenAI, Claude, or another model."
 
 def evaluate_answer(role, domain, interview_type, question, answer):
     """Evaluate the user's answer and provide feedback"""
@@ -63,9 +61,8 @@ def evaluate_answer(role, domain, interview_type, question, answer):
     
     response = get_llm_response(prompt)
     
-    # Parse response (in a real implementation, ensure this parsing is robust)
+    # Parse response
     try:
-        # This is simplified - in a real app, use more robust parsing
         feedback_parts = response.split("SCORE:")
         
         if len(feedback_parts) > 1:
@@ -79,7 +76,11 @@ def evaluate_answer(role, domain, interview_type, question, answer):
         return feedback, score
         
     except Exception as e:
-        # For demo, return a simulated response
-        feedback = "Your answer demonstrates good knowledge of the topic. Consider adding more specific examples to strengthen your points. Also, try to structure your answer using the STAR method (Situation, Task, Action, Result) for clearer communication."
+        # In case parsing fails badly, return a fallback
+        feedback = (
+            "Your answer demonstrates good knowledge of the topic. "
+            "Consider adding more specific examples to strengthen your points. "
+            "Also, try to structure your answer using the STAR method (Situation, Task, Action, Result) for clearer communication."
+        )
         score = 7
         return feedback, score

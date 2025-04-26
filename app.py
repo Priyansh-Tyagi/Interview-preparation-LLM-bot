@@ -214,6 +214,37 @@ def create_ui():
         
     return app
 
+# app.py
+
+import gradio as gr
+from llm_handler import evaluate_answer
+
+def create_ui():
+    with gr.Blocks() as demo:
+        gr.Markdown("# 🧠 Interview Preparation Bot")
+
+        role = gr.Textbox(placeholder="Enter your Role (e.g., Software Engineer)", label="Role")
+        domain = gr.Textbox(placeholder="Enter the Domain (e.g., Machine Learning)", label="Domain")
+        interview_type = gr.Dropdown(["Technical", "Behavioral", "HR"], label="Interview Type")
+        question = gr.Textbox(placeholder="Enter the interview question", label="Question")
+        answer = gr.Textbox(placeholder="Enter your answer", label="Your Answer")
+
+        feedback_output = gr.Textbox(label="Feedback")
+        score_output = gr.Textbox(label="Score")
+
+        def process(role, domain, interview_type, question, answer):
+            return evaluate_answer(role, domain, interview_type, question, answer)
+
+        submit_button = gr.Button("Submit Answer")
+        submit_button.click(
+            fn=process,
+            inputs=[role, domain, interview_type, question, answer],
+            outputs=[feedback_output, score_output]
+        )
+
+    return demo
+
+
 if __name__ == "__main__":
     ui = create_ui()
-    ui.launch()
+    ui.launch(share=True)
