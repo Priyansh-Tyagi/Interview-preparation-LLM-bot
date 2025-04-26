@@ -1,96 +1,117 @@
-# utils.py
 import json
 import os
-from datetime import datetime
+import time
+from typing import List, Tuple, Dict, Any, Optional
 
-def generate_report(session_data, answers, feedback, scores):
-    """Generate a comprehensive report of the interview session"""
-    
-    # Calculate average score
-    valid_scores = [s for s in scores if s > 0]  # Filter out skipped questions
-    avg_score = sum(valid_scores) / len(valid_scores) if valid_scores else 0
-    
-    # Identify strengths and weaknesses
-    strengths = []
-    weaknesses = []
-    
-    # This is simplified - in a real app, you would use the LLM to analyze feedback
-    if avg_score >= 8:
-        strengths.append("Strong technical knowledge")
-        strengths.append("Clear communication")
-    elif avg_score >= 6:
-        strengths.append("Good foundational knowledge")
-        weaknesses.append("Could improve depth in certain areas")
-    else:
-        weaknesses.append("Needs to strengthen technical knowledge")
-        weaknesses.append("Could improve answer structure")
-    
-    # Generate report
-    report = f"""
-    # Interview Report
-
-    ## Session Summary
-    - Role: {session_data['role']}
-    - Domain: {session_data['domain']}
-    - Interview Type: {session_data['interview_type']}
-    - Date: {session_data['start_time']}
-
-    ## Performance
-    - Questions Attempted: {len(answers)}
-    - Average Score: {avg_score:.1f}/10
-
-    ## Strengths
-    {chr(10).join('- ' + s for s in strengths)}
-
-    ## Areas for Improvement
-    {chr(10).join('- ' + w for w in weaknesses)}
-
-    ## Question Breakdown
+def load_previous_interview(filename: str) -> Tuple[List[List[str]], str]:
     """
+    Load a previously saved interview from a file
     
-    for i, (question, answer, fb, score) in enumerate(zip(session_data['questions'], answers, feedback, scores)):
-        report += f"""
-    ### Question {i+1}: {question}
-    - Your Answer: {"[SKIPPED]" if answer == "SKIPPED" else answer}
-    - Score: {score}/10
-    - Feedback: {fb}
+    Args:
+        filename: Path to the saved interview JSON file
+        
+    Returns:
+        Tuple containing the chat history and job role
     """
-    
-    report += """
-    ## Resources for Improvement
-    - [Technical Interview Handbook](https://www.techinterviewhandbook.org/)
-    - [Cracking the Coding Interview](https://www.crackingthecodinginterview.com/)
-    - [Grokking the System Design Interview](https://www.educative.io/courses/grokking-the-system-design-interview)
-    """
-    
-    return report
+    try:
+        with open(filename, 'r') as f:
+            data = json.load(f)
+            
+        chat_history = data.get('conversation', [])
+        job_role = data.get('job_role', '')
+        
+        return chat_history, job_role
+    except Exception as e:
+        print(f"Error loading interview: {e}")
+        return [], ""
 
-def save_session(session_data, answers, feedback, scores, report):
-    """Save the interview session for future reference"""
+def get_saved_interviews() -> List[Dict[str, Any]]:
+    """
+    Get a list of all saved interviews
     
-    # Create directory if it doesn't exist
-    if not os.path.exists("interview_sessions"):
-        os.makedirs("interview_sessions")
+    Returns:
+        List of dictionaries containing interview metadata
+    """
+    saved_dir = "saved_interviews"
+    if not os.path.exists(saved_dir):
+        return []
+        
+    interviews = []
+    for filename in os.listdir(saved_dir):
+        if filename.endswith('.json'):
+            try:
+                filepath = os.path.join(saved_dir, filename)
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                
+                # Extract metadata
+                interviews.append({
+                    'filename': filepath,
+                    'job_role': data.get('job_role', 'Unknown'),
+                    'timestamp': data.get('timestamp', ''),
+                    'question_count': len(data.get('conversation', []))
+                })
+            except Exception:
+                continue
     
-    # Create a unique filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"interview_sessions/session_{timestamp}.json"
+    # Sort by timestamp, newest first
+    interviews.sort(key=lambda x: x['timestamp'], reverse=True)
+    return interviews
+
+def get_interview_questions_by_role(role: str) -> List[str]:
+    """
+    Get sample interview questions for a specific job role
     
-    # Prepare data
-    session_record = {
-        "session_info": session_data,
-        "answers": answers,
-        "feedback": feedback,
-        "scores": scores,
-        "report": report
+    Args:
+        role: The job role to get questions for
+        
+    Returns:
+        List of interview questions
+    """
+    # Generic questions for any role
+    generic_questions = [
+        "Tell me about yourself.",
+        "What are your greatest strengths?",
+        "What do you consider to be your weaknesses?",
+        "Why are you interested in working for our company?",
+        "Where do you see yourself in 5 years?",
+        "Why should we hire you?",
+        "How do you handle stress and pressure?",
+        "Describe a difficult work situation and how you overcame it."
+    ]
+    
+    # Role-specific questions
+    role_specific = {
+        "software engineer": [
+            "Explain the difference between an array and a linked list.",
+            "What is your experience with agile development?",
+            "Describe a challenging programming problem you've solved.",
+            "How do you ensure your code is maintainable and scalable?",
+            "What programming languages are you proficient in?"
+        ],
+        "data scientist": [
+            "Explain the difference between supervised and unsupervised learning.",
+            "How do you handle missing data in a dataset?",
+            "What techniques do you use for feature selection?",
+            "Describe a data science project you've worked on.",
+            "How do you communicate technical findings to non-technical stakeholders?"
+        ],
+        "product manager": [
+            "How do you prioritize features for a product?",
+            "Describe how you would launch a new product.",
+            "How do you gather and incorporate user feedback?",
+            "Tell me about a time you had to make a difficult product decision.",
+            "How do you measure product success?"
+        ]
     }
     
-    # Save to file
-    try:
-        with open(filename, "w") as f:
-            json.dump(session_record, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"Error saving session: {str(e)}")
-        return False
-
+    # Check if we have specific questions for this role
+    role_lower = role.lower()
+    questions = generic_questions.copy()
+    
+    for key, specific_questions in role_specific.items():
+        if key in role_lower:
+            questions.extend(specific_questions)
+            break
+    
+    return questions
