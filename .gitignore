@@ -1,2 +1,10 @@
 #ignore environment variable
 .env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+build/
+dist/
+*.egg-info/
