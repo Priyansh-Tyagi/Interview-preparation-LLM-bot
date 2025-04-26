@@ -1,61 +1,57 @@
-# llm_handler.py
 import os
 import openai
-import json
-
-#load local question_bank for demo
-from question_banks import questions
 import random
+
+# Load local question_bank for demo
+from question_banks import questions
+
+# Set up environment variables and OpenAI client
+from dotenv import load_dotenv
+load_dotenv()
+
+from openai import OpenAI
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def generate_question(role, domain, interview_type, difficulty, topic):
     """
     Pick a random question based on topic and difficulty.
     If unavailable, fallback to LLM.
     """
+    # Fetch questions based on the topic and difficulty from the question bank
     topic_data = questions.get(topic, {})
     difficulty_questions = topic_data.get(difficulty, [])
     
+    # If questions are found for the given difficulty, return a random one
     if difficulty_questions:
         return random.choice(difficulty_questions)
     else:
-        # Fallback if specific difficulty is missing
+        # If no questions are found, generate a question via LLM
         prompt = f"Generate a {difficulty} level {topic} interview question for a {role} in a {domain} {interview_type} interview."
         return get_llm_response(prompt)
 
 
-#load env
-from dotenv import load_dotenv
-load_dotenv()
-
-# Set up your API key (in production, use environment variables)
-from openai import OpenAI
-
-# Set up OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 def get_llm_response(prompt, max_tokens=500):
+    """Generate a response using OpenAI API."""
     try:
-         response = client.chat.completions.create(
-             model="gpt-3.5-turbo",
-             messages=[
-                 {"role": "system", "content": "You are an expert interviewer helping candidates prepare for job interviews."},
-                 {"role": "user", "content": prompt}
-             ],
-             max_tokens=max_tokens
-         )
-         return response.choices[0].message.content
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an expert interviewer helping candidates prepare for job interviews."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error getting LLM response: {str(e)}"
-
-    
-    # For demo purposes - in case you simulate the response without API (unreachable here now)
-    # return "This is a simulated LLM response. In a real implementation, this would use an LLM API like OpenAI, Claude, or another model."
 
 def evaluate_answer(role, domain, interview_type, question, answer):
     """Evaluate the user's answer and provide feedback"""
     if answer == "SKIPPED":
         return "Question was skipped.", 0
-        
+    
     prompt = f"""
     You are an expert {role} interviewer specializing in {domain} topics.
     
@@ -94,9 +90,8 @@ def evaluate_answer(role, domain, interview_type, question, answer):
             score = 5  # Default score if parsing fails
             
         return feedback, score
-        
+    
     except Exception as e:
-        # In case parsing fails badly, return a fallback
         feedback = (
             "Your answer demonstrates good knowledge of the topic. "
             "Consider adding more specific examples to strengthen your points. "

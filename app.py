@@ -1,10 +1,9 @@
 import gradio as gr
+import requests
 import time
-import json
 from datetime import datetime
-import random
-from llm_handler import get_llm_response, evaluate_answer
 from question_banks import questions
+from llm_handler import evaluate_answer
 from utils import generate_report, save_session
 
 # Global variables to track session state
@@ -26,110 +25,62 @@ def start_interview(role, domain, interview_type, num_questions=3):
     scores = []
     
     # Get questions based on role, domain and interview type
-    questions = questions(role, domain, interview_type, num_questions)
+    questions_list = questions[role][domain][interview_type][:num_questions]
     
     # Initialize session data
     session_data = {
         "role": role,
         "domain": domain,
         "interview_type": interview_type,
-        "questions": questions,
+        "questions": questions_list,
         "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     
     interview_history.append(session_data)
     
     # Return first question
-    if questions:
-        return questions[0], "", "", gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
+    if questions_list:
+        return questions_list[0], "", "", gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
     else:
         return "No questions available for this combination. Please try different options.", "", "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
-def submit_answer(role, domain, interview_type, question, answer):
-    """Process user's answer and provide feedback"""
-    global current_question_index, user_answers, feedback_history, scores, interview_history
-    
-    if not interview_history:
-        return question, "Please start an interview first.", "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
-    
-    # Save the answer
-    user_answers.append(answer)
-    
-    # Get feedback from LLM
-    feedback, score = evaluate_answer(role, domain, interview_type, question, answer)
-    feedback_history.append(feedback)
-    scores.append(score)
-    
-    questions = interview_history[0]["questions"]
-    
-    # Check if we have more questions
-    current_question_index += 1
-    
-    if current_question_index < len(questions):
-        next_question = questions[current_question_index]
-        return next_question, feedback, f"Score: {score}/10", gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
-    else:
-        # End of interview
-        report = generate_report(interview_history[0], user_answers, feedback_history, scores)
-        save_session(interview_history[0], user_answers, feedback_history, scores, report)
-        return "", feedback, f"Score: {score}/10", gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+def submit_answer_handler(role, domain, interview_type, state):
+    # Debugging: Print the current state and inputs
+    print(f"Role: {role}, Domain: {domain}, Interview Type: {interview_type}")
+    print(f"Current answered_questions index: {state['answered_questions']}")
 
-def retry_question():
-    """Allow user to retry the current question"""
-    global current_question_index, interview_history
-    
-    if not interview_history:
-        return "Please start an interview first.", "", "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
-    
-    # Go back to current question (don't increment)
-    questions = interview_history[0]["questions"]
-    
-    if 0 <= current_question_index < len(questions):
-        return questions[current_question_index], "", "", gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
-    else:
-        return "No current question to retry.", "", "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+    # Ensure answered_questions index is incremented correctly
+    current_question_index = state["answered_questions"]
 
-def skip_question(role, domain, interview_type):
-    """Skip the current question"""
-    global current_question_index, interview_history, user_answers, feedback_history, scores
-    
-    if not interview_history:
-        return "Please start an interview first.", "", "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
-    
-    # Add empty records for skipped question
-    user_answers.append("SKIPPED")
-    feedback_history.append("Question was skipped.")
-    scores.append(0)
-    
-    # Increment to next question
-    current_question_index += 1
-    questions = interview_history[0]["questions"]
-    
-    if current_question_index < len(questions):
-        next_question = questions[current_question_index]
-        return next_question, "Question skipped.", "", gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
-    else:
-        # End of interview
-        report = generate_report(interview_history[0], user_answers, feedback_history, scores)
-        save_session(interview_history[0], user_answers, feedback_history, scores, report)
-        return "", "Interview complete.", "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+    # Increment the index after answering a question
+    state["answered_questions"] = current_question_index + 1
+    print(f"New answered_questions index: {state['answered_questions']}")
 
-def view_report():
-    """Display the final interview report"""
-    if not interview_history or len(user_answers) == 0:
-        return "No completed interview to report."
-    
-    report = generate_report(interview_history[0], user_answers, feedback_history, scores)
-    return report
+    # Normalize role (capitalizing the first letter of each word)
+    normalized_role = role.strip().title()
 
-import gradio as gr
-import time
+    # Check if the role exists in the questions dictionary
+    if normalized_role not in questions:
+        return f"Role '{normalized_role}' not found in the question bank."
 
-import gradio as gr
-import time
+    # Check if the domain and interview_type exist for the role
+    if domain not in questions[normalized_role]:
+        return f"Domain '{domain}' not found for role '{normalized_role}'."
+    if interview_type not in questions[normalized_role][domain]:
+        return f"Interview type '{interview_type}' not found for domain '{domain}' in role '{normalized_role}'."
 
-import gradio as gr
-import time
+    try:
+        # Fetch the next question based on the incremented index
+        next_question = questions[normalized_role][domain][interview_type][state["answered_questions"]]
+
+        # Check if we have exceeded the number of available questions
+        if next_question is None:  # Or any other condition for boundary checking
+            return "No more questions available."
+
+        return next_question  # Return the next question
+    except KeyError:
+        return "Invalid combination of inputs."
+
 
 def create_ui():
     with gr.Blocks(theme=gr.themes.Soft()) as demo:  # Lighter and modern color palette
@@ -180,38 +131,105 @@ def create_ui():
             "correct_answers": 0
         })
 
-        # Functions
-        def start_interview(role, domain, interview_type, difficulty):
-            first_question = generate_question(role, domain, interview_type, difficulty)
-            return {
-                question_display: f"### Question 1: {first_question}",
-                progress_display: f"Progress: 1/5 📈",
-                state: {
-                    "current_question": first_question,
-                    "current_question_number": 1,
-                    "total_questions": 5,
-                    "start_time": time.time(),
-                    "answered_questions": 0,
-                    "correct_answers": 0
-                },
-                motivational_message: ""
+
+        def start_interview_handler(role, domain, interview_type, state):
+            # Ensure state is always a dictionary
+            if not isinstance(state, dict):
+                state = {}  # Initialize an empty dictionary if state is not a dictionary
+
+            # Normalize role input (capitalize for matching)
+            normalized_role = role.strip().title()
+
+            # Define the API URL (replace with your actual API endpoint)
+            api_url = "https://yourapi.com/interview_questions"
+
+            # Prepare parameters for the API call
+            params = {
+                "role": normalized_role,
+                "domain": domain,
+                "interview_type": interview_type
             }
 
-        def submit_answer(answer, role, domain, interview_type, difficulty, data):
+            try:
+                # Call the API to get the questions based on role, domain, and interview type
+                response = requests.get(api_url, params=params)
+                
+                # Print out the raw response for debugging
+                print(f"API Response: {response.text}")
+
+                # Check if the response is valid
+                if response.status_code != 200:
+                    return (
+                        f"Error: Unable to fetch interview questions. Status code: {response.status_code}.",  # Markdown 1
+                        "",  # Placeholder for second markdown
+                        state,  # Return the current state (updated or unchanged)
+                        ""  # Placeholder for the last markdown
+                    )
+                
+                # Try to parse the response JSON
+                interview_data = response.json()
+
+                # Check if we received valid questions data
+                if not interview_data or "questions" not in interview_data:
+                    return (
+                        "No interview questions found for the specified role, domain, and interview type.",  # Markdown 1
+                        "",  # Placeholder for second markdown
+                        state,  # Return the current state (updated or unchanged)
+                        ""  # Placeholder for the last markdown
+                    )
+
+                # Get the list of questions
+                questions_list = interview_data["questions"]
+                
+                current_question_index = state.get("answered_questions", 0)
+                
+                if current_question_index >= len(questions_list):
+                    return (
+                        "No more questions available.",  # Markdown 1
+                        "",  # Placeholder for second markdown
+                        state,  # State remains unchanged
+                        ""  # Placeholder for the last markdown
+                    )
+
+                # Otherwise, return the next question along with the updated state
+                next_question = questions_list[current_question_index]
+                
+                state["answered_questions"] = current_question_index + 1  # Increment question index
+                
+                return (
+                    next_question,  # Markdown 1: The next question
+                    "",  # Placeholder for second markdown
+                    state,  # Updated state
+                    ""  # Placeholder for the last markdown
+                )
+
+            except Exception as e:
+                return (
+                    f"Error: An unexpected error occurred while fetching interview questions. {str(e)}",  # Markdown 1
+                    "",  # Placeholder for second markdown
+                    state,  # Return the current state (updated or unchanged)
+                    ""  # Placeholder for the last markdown
+                )
+
+
+
+        
+
+        def submit_answer_handler(answer, role, domain, interview_type, difficulty, state):
             if not answer:
                 answer = "SKIPPED"
             
-            feedback, score = evaluate_answer(role, domain, interview_type, data['current_question'], answer)
-            time_taken = int(time.time() - data['start_time'])
+            feedback, score = evaluate_answer(role, domain, interview_type, state['current_question'], answer)
+            time_taken = int(time.time() - state['start_time'])
 
             # Update state after answering
-            data["answered_questions"] += 1
+            state["answered_questions"] += 1
 
             # Prepare next question (if there are more)
-            if data["answered_questions"] < data["total_questions"]:
-                next_question = generate_question(role, domain, interview_type, difficulty)
-                next_question_number = data["answered_questions"] + 1
-                progress = f"Progress: {next_question_number}/5 📈"
+            if state["answered_questions"] < state["total_questions"]:
+                next_question = questions[role][domain][interview_type][state["answered_questions"]]
+                next_question_number = state["answered_questions"] + 1
+                progress = f"Progress: {next_question_number}/{state['total_questions']} 📈"
                 question_text = f"### Question {next_question_number}: {next_question}"
                 motivational = ""
             else:
@@ -221,14 +239,14 @@ def create_ui():
                 motivational = "Good Job! 🚀 Stay awesome!"
 
             # Update state
-            data.update({
+            state.update({
                 "current_question": next_question,
-                "current_question_number": data["answered_questions"] + 1,
+                "current_question_number": state["answered_questions"] + 1,
                 "start_time": time.time()
             })
 
             # Display feedback only after all questions are answered
-            if data["answered_questions"] == data["total_questions"]:
+            if state["answered_questions"] == state["total_questions"]:
                 return {
                     feedback_display: f"### Feedback:\n{feedback}",
                     score_display: f"### Score: {score}/10",
@@ -236,25 +254,25 @@ def create_ui():
                     question_display: question_text,
                     progress_display: progress,
                     motivational_message: motivational,
-                    state: data
+                    state: state
                 }
 
             return {
                 question_display: question_text,
                 progress_display: progress,
                 timer_display: f"⏱ Time Taken: {time_taken} seconds",
-                state: data
+                state: state
             }
 
         # Event Bindings
         start_button.click(
-            start_interview,
+            start_interview_handler,
             inputs=[role, domain, interview_type, difficulty],
             outputs=[question_display, progress_display, state, motivational_message]
         )
 
         submit_button.click(
-            submit_answer,
+            submit_answer_handler,
             inputs=[answer_box, role, domain, interview_type, difficulty, state],
             outputs=[feedback_display, score_display, timer_display, question_display, progress_display, motivational_message, state]
         )
